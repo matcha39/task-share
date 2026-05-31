@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>タスクシェア | スプレッドシート同期＆個人カレンダー</title>
-    <link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22%E3%22%2C%22short_name%22%3A%22%E3%22%2D%7D">
     <meta name="theme-color" content="#6366f1">
     <link class="rounded-xl" rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/906/906334.png">
     
@@ -372,9 +371,11 @@
             if (state.gasUrl) {
                 gasUrlInput.value = state.gasUrl;
             }
-            // ローカル保存されている前回のログイン・ユーザーやリスト情報を一時的に仮復旧
             const cachedUsers = localStorage.getItem('task_share_local_users');
             if (cachedUsers) state.users = JSON.parse(cachedUsers);
+            
+            // カレンダーの初回描画
+            renderCalendar();
         });
 
         function setupEventListeners() {
@@ -393,6 +394,7 @@
             adminConsoleBtn.addEventListener('click', () => {
                 if (!state.currentUser.isAdmin) return;
                 adminModal.classList.remove('hidden');
+                renderAdminUsersList();
             });
             
             const closeAdmin = () => adminModal.classList.add('hidden');
@@ -400,6 +402,39 @@
             closeAdminFooterBtn.addEventListener('click', closeAdmin);
             newUserForm.addEventListener('submit', handleAddUser);
             saveGasConfigBtn.addEventListener('click', handleSaveGasConfig);
+        }
+
+        // トースト通知の表示
+        function showToast(message, type = "success") {
+            toastMessage.textContent = message;
+            if (type === "success") {
+                toastIcon.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+                toastIcon.className = "text-emerald-400";
+            } else {
+                toastIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i>';
+                toastIcon.className = "text-rose-400";
+            }
+            toastNotification.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toastNotification.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // 表示の切り替え
+        function switchView(view) {
+            state.currentView = view;
+            if (view === "calendar") {
+                tabCalendarBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl bg-indigo-600 text-white";
+                tabListBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl text-slate-600 hover:bg-slate-100";
+                calendarView.classList.remove('hidden');
+                listView.classList.add('hidden');
+            } else {
+                tabCalendarBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl text-slate-600 hover:bg-slate-100";
+                tabListBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl bg-indigo-600 text-white";
+                calendarView.classList.add('hidden');
+                listView.classList.remove('hidden');
+                renderTaskList();
+            }
         }
 
         // ログイン処理
@@ -411,7 +446,6 @@
             loginBtn.disabled = true;
             loginBtn.textContent = "認証中...";
 
-            // まず先に、GASから最新のユーザー・予定リストを取得し同期を試みる
             if (state.gasUrl) {
                 try {
                     const res = await fetch(state.gasUrl);
@@ -423,11 +457,10 @@
                         localStorage.setItem('task_share_global_tasks', JSON.stringify(state.globalTasks));
                     }
                 } catch(err) {
-                    console.log("ログイン時の事前同期に失敗。キャッシュデータを使用します。");
+                    console.log("事前同期失敗、キャッシュを使用します。");
                 }
             }
 
-            // ユーザーの一致チェック
             const foundUser = state.users.find(u => u.id === username && u.pass === password);
 
             if (foundUser) {
@@ -478,10 +511,108 @@
             }
         }
 
+        // 🌟 タスク登録ボタンが押された時の処理（fetchによるGAS doPost同期に対応）
+        async function handleTaskSubmit(e) {
+            e.preventDefault();
+            
+            const title = taskTitleInput.value.trim();
+            const subject = taskSubjectInput.value.trim() || "全般";
+            const deadline = taskDeadlineInput.value;
+            const memo = taskMemoInput.value.trim();
+
+            if (!title || !deadline) return;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = "保存中...";
+
+            const taskId = "task_" + new Date().getTime();
+            const newTask = {
+                id: taskId,
+                title: title,
+                deadline: deadline,
+                memo: memo,
+                status: "未着手",
+                subject: subject,
+                createdBy: state.currentUser.name
+            };
+
+            if (state.taskScope === "private") {
+                // 自分用（ローカル保存）の処理
+                newTask.ownerId = state.currentUser.id;
+                state.privateTasks.push(newTask);
+                localStorage.setItem('task_share_private_tasks', JSON.stringify(state.privateTasks));
+                showToast("自分用の予定を保存しました");
+                completeSubmit();
+            } else {
+                // みんなに共有（GASスプレッドシート同期）の処理
+                if (!state.gasUrl) {
+                    showToast("GASのURLが設定されていないため、共有保存できません。", "error");
+                    submitBtn.disabled = false;
+                    setTaskScope("global");
+                    return;
+                }
+
+                try {
+                    // GASのdoPostに送るデータ
+                    const payload = {
+                        action: "createTask",
+                        ...newTask
+                    };
+
+                    const response = await fetch(state.gasUrl, {
+                        method: "POST",
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+
+                    if (result.status === "success") {
+                        state.globalTasks.push(newTask);
+                        localStorage.setItem('task_share_global_tasks', JSON.stringify(state.globalTasks));
+                        showToast("スプレッドシートに共有同期しました！");
+                        completeSubmit();
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showToast("スプレッドシートへの同期に失敗しました。", "error");
+                }
+            }
+        }
+
+        function completeSubmit() {
+            taskForm.reset();
+            submitBtn.disabled = false;
+            setTaskScope(state.taskScope);
+            updateSummaryUi();
+            if (state.currentView === "calendar") renderCalendar(); else renderTaskList();
+        }
+
+        // UIの状態更新
+        function updateStatusUi(status) {
+            connectionStatus.className = "p-4 rounded-2xl border transition-all duration-300 flex items-center space-x-3 ";
+            if (status === "online") {
+                connectionStatus.classList.add("bg-emerald-50", "border-emerald-200", "text-emerald-800");
+                statusDot.className = "w-2.5 h-2.5 bg-emerald-500 rounded-full flex-shrink-0";
+                statusTitle.textContent = "スプレッドシート同期中";
+                statusDesc.textContent = "リアルタイムで全員のタスクと同期されています。";
+            } else if (status === "connecting") {
+                connectionStatus.classList.add("bg-amber-50", "border-amber-200", "text-amber-800");
+                statusDot.className = "w-2.5 h-2.5 bg-amber-500 rounded-full flex-shrink-0 animate-pulse";
+                statusTitle.textContent = "データを読み込み中...";
+                statusDesc.textContent = "Googleスプレッドシートに接続しています。";
+            } else {
+                connectionStatus.classList.add("bg-rose-50", "border-rose-200", "text-rose-800");
+                statusDot.className = "w-2.5 h-2.5 bg-rose-500 rounded-full flex-shrink-0";
+                statusTitle.textContent = "オフライン / 接続エラー";
+                statusDesc.textContent = "システム設定から有効なGASウェブアプリURLを確認してください。";
+            }
+        }
+
         // データの同期・読み込み処理
         async function loadAndSyncData() {
             const localPriv = localStorage.getItem('task_share_private_tasks');
-            state.privateTasks = localPriv ? JSON.parse(localPriv).filter(t => t.ownerId === state.currentUser.id) : [];
+            state.privateTasks = localPriv ? JSON.parse(localPriv).filter(t => t.ownerId === state.currentUser.id || !t.ownerId) : [];
 
             if (state.gasUrl) {
                 updateStatusUi("connecting");
@@ -498,258 +629,21 @@
                     updateStatusUi("online");
                 } catch(e) {
                     updateStatusUi("error");
-                    state.globalTasks = JSON.parse(localStorage.getItem('task_share_global_tasks')) || [];
-                    state.users = JSON.parse(localStorage.getItem('task_share_local_users')) || DEFAULT_LOCAL_USERS;
+                    const cachedGlobal = localStorage.getItem('task_share_global_tasks');
+                    if (cachedGlobal) state.globalTasks = JSON.parse(cachedGlobal);
                 }
             } else {
                 updateStatusUi("offline");
-                state.globalTasks = JSON.parse(localStorage.getItem('task_share_global_tasks')) || [];
-                state.users = JSON.parse(localStorage.getItem('task_share_local_users')) || DEFAULT_LOCAL_USERS;
             }
-
-            updateSummaryCounters();
-            renderCalendar();
-            renderTaskList();
-            renderUsersList();
+            updateSummaryUi();
+            if (state.currentView === "calendar") renderCalendar(); else renderTaskList();
         }
 
-        async function handleSaveGasConfig() {
-            if (!state.currentUser.isAdmin) return;
-            const url = gasUrlInput.value.trim();
-            if (!url) { showToast("URLを入力してください", "error"); return; }
-
-            saveGasConfigBtn.disabled = true;
-            saveGasConfigBtn.textContent = "接続チェック中...";
-
-            try {
-                const res = await fetch(url);
-                if (res.ok) {
-                    state.gasUrl = url;
-                    localStorage.setItem('task_share_gas_url', url);
-                    showToast("スプレッドシート連携に成功しました！ 📊", "success");
-                    await loadAndSyncData();
-                } else { throw new Error(); }
-            } catch(e) {
-                showToast("接続に失敗しました。URLやGASの公開設定を確認してください", "error");
-            } finally {
-                saveGasConfigBtn.disabled = false;
-                saveGasConfigBtn.textContent = "スプレッドシートに接続する";
-            }
-        }
-
-        function updateStatusUi(mode) {
-            if (mode === "online") {
-                connectionStatus.className = "p-4 rounded-2xl border transition-all duration-300 flex items-center space-x-3 bg-emerald-50 border-emerald-200 text-emerald-800";
-                statusDot.className = "w-2.5 h-2.5 bg-emerald-500 rounded-full flex-shrink-0";
-                statusTitle.textContent = "スプレッドシート同期中";
-                statusDesc.textContent = "共有タスクはリアルタイムに自動同期されています。";
-            } else if (mode === "connecting") {
-                connectionStatus.className = "p-4 rounded-2xl border transition-all duration-300 flex items-center space-x-3 bg-amber-50 border-amber-200 text-amber-800";
-                statusDot.className = "w-2.5 h-2.5 bg-amber-500 rounded-full flex-shrink-0 animate-pulse";
-                statusTitle.textContent = "接続同期中...";
-                statusDesc.textContent = "データを読み込んでいます。";
-            } else {
-                connectionStatus.className = "p-4 rounded-2xl border transition-all duration-300 flex items-center space-x-3 bg-rose-50 border-rose-200 text-rose-800";
-                statusDot.className = "w-2.5 h-2.5 bg-rose-500 rounded-full flex-shrink-0";
-                statusTitle.textContent = "オフライン・切断モード";
-                statusDesc.textContent = "設定されたURLに接続できません。ローカルの保存データを使用します。";
-            }
-        }
-
-        // タスクの新規登録処理
-        async function handleTaskSubmit(e) {
-            e.preventDefault();
-            const title = taskTitleInput.value.trim();
-            const subject = taskSubjectInput.value.trim();
-            const deadline = taskDeadlineInput.value;
-            const memo = taskMemoInput.value.trim();
-
-            if (!title || !deadline) return;
-
-            const taskId = "task_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4);
-            const newTask = {
-                id: taskId,
-                title: title,
-                subject: subject || "その他",
-                deadline: deadline.replace("T", " "), // HTMLの書式を「YYYY-MM-DD HH:mm」形式に変換
-                memo: memo,
-                status: "未完了",
-                createdBy: state.currentUser.id
-            };
-
-            submitBtn.disabled = true;
-
-            if (state.taskScope === "global" && state.gasUrl) {
-                // スプレッドシート（みんなに共有）に保存
-                try {
-                    const res = await fetch(state.gasUrl, {
-                        method: "POST",
-                        body: JSON.stringify({ action: "createTask", ...newTask })
-                    });
-                    const resData = await res.json();
-                    if (resData.status === "success") {
-                        showToast("共有予定を追加しました！", "success");
-                    } else { throw new Error(); }
-                } catch(err) {
-                    showToast("シートへの送信に失敗したため、一時的にローカル保存します", "error");
-                }
-            } else {
-                // 自分用（非公開）にローカル保存
-                newTask.ownerId = state.currentUser.id;
-                newTask.isPrivate = true;
-                const allPrivates = JSON.parse(localStorage.getItem('task_share_private_tasks') || "[]");
-                allPrivates.push(newTask);
-                localStorage.setItem('task_share_private_tasks', JSON.stringify(allPrivates));
-                showToast("自分用の予定を保存しました", "success");
-            }
-
-            taskForm.reset();
-            submitBtn.disabled = false;
-            await loadAndSyncData();
-        }
-
-        // ステータスの切り替え（完了 / 未完了）
-        async function toggleTaskStatus(taskId, currentStatus, isPrivate) {
-            if (isPrivate) {
-                const allPrivates = JSON.parse(localStorage.getItem('task_share_private_tasks') || "[]");
-                const task = allPrivates.find(t => t.id === taskId);
-                if (task) {
-                    task.status = currentStatus === "未完了" ? "完了済み" : "未完了";
-                    localStorage.setItem('task_share_private_tasks', JSON.stringify(allPrivates));
-                    showToast("ステータスを更新しました", "success");
-                    await loadAndSyncData();
-                }
-            } else {
-                if (!state.gasUrl) { showToast("オフラインのため共有タスクの変更はできません", "error"); return; }
-                const nextStatus = currentStatus === "未完了" ? "完了済み" : "未完了";
-                try {
-                    const res = await fetch(state.gasUrl, {
-                        method: "POST",
-                        body: JSON.stringify({ action: "updateTaskStatus", id: taskId, status: nextStatus })
-                    });
-                    const resData = await res.json();
-                    if (resData.status === "success") {
-                        showToast("共有ステータスを更新しました！", "success");
-                        await loadAndSyncData();
-                    }
-                } catch(e) {
-                    showToast("通信エラーが発生しました", "error");
-                }
-            }
-        }
-
-        // タスクの削除
-        async function deleteTask(taskId, isPrivate) {
-            if (!confirm("この予定を削除してもよろしいですか？")) return;
-
-            if (isPrivate) {
-                const allPrivates = JSON.parse(localStorage.getItem('task_share_private_tasks') || "[]");
-                const filtered = allPrivates.filter(t => t.id !== taskId);
-                localStorage.setItem('task_share_private_tasks', JSON.stringify(filtered));
-                showToast("予定を削除しました", "success");
-                await loadAndSyncData();
-            } else {
-                if (!state.gasUrl) { showToast("オフラインのため共有タスクの削除はできません", "error"); return; }
-                try {
-                    const res = await fetch(state.gasUrl, {
-                        method: "POST",
-                        body: JSON.stringify({ action: "deleteTask", id: taskId })
-                    });
-                    const resData = await res.json();
-                    if (resData.status === "success") {
-                        showToast("共有予定を削除しました", "success");
-                        await loadAndSyncData();
-                    }
-                } catch(e) {
-                    showToast("通信エラーが発生しました", "error");
-                }
-            }
-        }
-
-        // 管理者：新規ユーザー追加
-        async function handleAddUser(e) {
-            e.preventDefault();
-            if (!state.currentUser.isAdmin) return;
-            const id = newUserIdInput.value.trim();
-            const name = newUserNameInput.value.trim();
-            const pass = newUserPassInput.value.trim();
-
-            if (!id || !name || !pass) return;
-            if (!state.gasUrl) { showToast("シートに接続されていないためユーザー作成できません", "error"); return; }
-
-            addUserBtn.disabled = true;
-            try {
-                const res = await fetch(state.gasUrl, {
-                    method: "POST",
-                    body: JSON.stringify({ action: "createUser", id, name, pass, isAdmin: false })
-                });
-                const resData = await res.json();
-                if (resData.status === "success") {
-                    showToast(`ユーザー「${name}」を追加しました！`, "success");
-                    newUserForm.reset();
-                    await loadAndSyncData();
-                }
-            } catch(err) {
-                showToast("通信エラーが発生しました", "error");
-            } finally {
-                addUserBtn.disabled = false;
-            }
-        }
-
-        // 管理者：ユーザー削除
-        async function deleteUser(userId) {
-            if (userId === "admin") { alert("初期管理者アカウントは削除できません"); return; }
-            if (!confirm(`ユーザーID: ${userId} を削除しますか？`)) return;
-            if (!state.gasUrl) return;
-
-            try {
-                const res = await fetch(state.gasUrl, {
-                    method: "POST",
-                    body: JSON.stringify({ action: "deleteUser", id: userId })
-                });
-                const resData = await res.json();
-                if (resData.status === "success") {
-                    showToast("ユーザーを削除しました", "success");
-                    await loadAndSyncData();
-                }
-            } catch(e) {
-                showToast("削除通信に失敗しました", "error");
-            }
-        }
-
-        // 表示タスクのフィルタリング・統合をおこなうヘルパー関数
-        function getFilteredTasks() {
-            let combined = [];
-            
-            // みんなの共有タスク
-            state.globalTasks.forEach(t => combined.push({ ...t, isPrivate: false }));
-            // 自分用のローカルタスク
-            state.privateTasks.forEach(t => combined.push({ ...t, isPrivate: true }));
-
-            // 1. 公開範囲(Scope)による絞り込み
-            if (state.filterScope === "global") combined = combined.filter(t => !t.isPrivate);
-            if (state.filterScope === "private") combined = combined.filter(t => t.isPrivate);
-
-            // 2. ステータスによる絞り込み
-            if (state.filterStatus === "uncompleted") combined = combined.filter(t => t.status !== "完了済み" && t.status !== "完了");
-            if (state.filterStatus === "completed") combined = combined.filter(t => t.status === "完了済み" || t.status === "完了");
-
-            // 日付順にソート（並び替えが安全に動くようエラーガードを追加）
-            return combined.sort((a, b) => {
-                const dateA = a.deadline ? new Date(a.deadline.replace(/-/g, "/")) : new Date(0);
-                const dateB = b.deadline ? new Date(b.deadline.replace(/-/g, "/")) : new Date(0);
-                return dateA - dateB;
-            });
-        }
-
-        // カウンター集計更新
-        function updateSummaryCounters() {
-            let myTasks = [];
-            state.globalTasks.forEach(t => myTasks.push(t));
-            state.privateTasks.forEach(t => myTasks.push(t));
-
-            const total = myTasks.length;
-            const completed = myTasks.filter(t => t.status === "完了済み" || t.status === "完了").length;
+        // サマリー計算と表示更新
+        function updateSummaryUi() {
+            const allMyTasks = [...state.privateTasks, ...state.globalTasks];
+            const total = allMyTasks.length;
+            const completed = allMyTasks.filter(t => t.status === "完了").length;
             const uncompleted = total - completed;
 
             uncompletedCountEl.textContent = uncompleted;
@@ -757,227 +651,290 @@
             totalCountEl.textContent = total;
         }
 
-        // ビュー切り替え
-        function switchView(view) {
-            state.currentView = view;
-            if (view === "calendar") {
-                tabCalendarBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl bg-indigo-600 text-white";
-                tabListBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl text-slate-600 hover:bg-slate-100";
-                calendarView.classList.remove('hidden');
-                listView.classList.add('hidden');
-                renderCalendar();
-            } else {
-                tabCalendarBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl text-slate-600 hover:bg-slate-100";
-                tabListBtn.className = "flex-1 py-2 px-3 text-sm font-bold rounded-xl bg-indigo-600 text-white";
-                calendarView.classList.add('hidden');
-                listView.classList.remove('hidden');
-                renderTaskList();
-            }
-        }
-
-        // 📅 カレンダーのレンダリング（大幅改修して安定化）
+        // カレンダービューのレンダリング
         function renderCalendar() {
-            calendarGrid.innerHTML = "";
             const year = state.currentDate.getFullYear();
             const month = state.currentDate.getMonth();
-
             calendarMonthLabel.textContent = `${year}年 ${month + 1}月`;
 
-            const firstDayIndex = new Date(year, month, 1).getDay();
-            const totalDays = new Date(year, month + 1, 0).getDate();
+            calendarGrid.innerHTML = "";
 
-            // 前月の空枠
+            const firstDayIndex = new Date(year, month, 1).getDay();
+            const lastDay = new Date(year, month + 1, 0).getDate();
+
+            // 前月の空枠埋め
             for (let i = 0; i < firstDayIndex; i++) {
                 const emptyCell = document.createElement('div');
-                emptyCell.className = "min-h-[65px] p-1 bg-slate-50/50 border border-slate-100 rounded-xl opacity-30";
+                emptyCell.className = "bg-slate-50/40 border border-slate-100/50 rounded-xl min-h-[50px] p-1";
                 calendarGrid.appendChild(emptyCell);
             }
 
-            // 当月の日付枠
-            const allTasks = getFilteredTasks();
+            // 今月の日付埋め
+            const allTasks = [
+                ...state.privateTasks.map(t => ({...t, isPrivate: true})),
+                ...state.globalTasks.map(t => ({...t, isPrivate: false}))
+            ];
 
-            for (let day = 1; day <= totalDays; day++) {
-                const dayCell = document.createElement('div');
-                dayCell.className = "min-h-[65px] p-1 bg-white border border-slate-100 rounded-xl flex flex-col justify-between text-left relative hover:bg-slate-50 transition";
+            const today = new Date();
+
+            for (let day = 1; day <= lastDay; day++) {
+                const dateCell = document.createElement('div');
+                const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
                 
-                const dateNo = document.createElement('span');
-                dateNo.className = "text-xs font-bold text-slate-700 ml-1 mt-0.5";
-                dateNo.textContent = day;
+                dateCell.className = `bg-white border border-slate-200 rounded-xl p-1 min-h-[65px] flex flex-col justify-between transition-all hover:bg-slate-50/80 ${isToday ? 'ring-2 ring-indigo-500 bg-indigo-50/20' : ''}`;
                 
-                // 本日かどうかの強調マーク
-                const today = new Date();
-                if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) {
-                    dateNo.className = "text-xs font-bold bg-indigo-600 text-white px-1.5 py-0.5 rounded-full inline-block scale-90";
-                }
-                dayCell.appendChild(dateNo);
+                const dayNum = document.createElement('span');
+                dayNum.className = "text-xs font-bold text-slate-700 self-start ml-1 mt-0.5";
+                dayNum.textContent = day;
+                dateCell.appendChild(dayNum);
 
-                // その日のタスクを抽出して配置
-                const currentStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-                const daysTasks = allTasks.filter(t => t.deadline && t.deadline.startsWith(currentStr));
+                // 該当日のタスクを抽出してバッジ表示
+                const currentStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayTasks = allTasks.filter(t => t.deadline.startsWith(currentStr));
 
-                const taskDotContainer = document.createElement('div');
-                taskDotContainer.className = "space-y-1 mt-1 flex-grow overflow-hidden max-h-[42px]";
-
-                daysTasks.forEach(t => {
-                    const dot = document.createElement('div');
-                    const isDone = (t.status === "完了済み" || t.status === "完了");
+                if (dayTasks.length > 0) {
+                    const taskBadgeContainer = document.createElement('div');
+                    taskBadgeContainer.className = "space-y-0.5 overflow-hidden flex-grow flex flex-col justify-end mt-1";
                     
-                    if (t.isPrivate) {
-                        dot.className = `text-[9px] px-1 py-0.5 rounded font-medium truncate ${isDone ? 'bg-slate-100 text-slate-400 line-through' : 'bg-violet-100 text-violet-700 border-l-2 border-violet-500'}`;
-                    } else {
-                        dot.className = `text-[9px] px-1 py-0.5 rounded font-medium truncate ${isDone ? 'bg-slate-100 text-slate-400 line-through' : 'bg-indigo-50 text-indigo-700 border-l-2 border-indigo-500'}`;
+                    dayTasks.slice(0, 2).forEach(t => {
+                        const badge = document.createElement('div');
+                        badge.className = `text-[9px] font-bold px-1 py-0.5 rounded truncate ${t.status === "完了" ? 'bg-slate-100 text-slate-400 line-through' : (t.isPrivate ? 'bg-violet-100 text-violet-700' : 'bg-indigo-100 text-indigo-700')}`;
+                        badge.textContent = t.title;
+                        taskBadgeContainer.appendChild(badge);
+                    });
+
+                    if (dayTasks.length > 2) {
+                        const more = document.createElement('div');
+                        more.className = "text-[8px] text-slate-400 font-bold pl-1 text-left";
+                        more.textContent = `他 ${dayTasks.length - 2} 件`;
+                        taskBadgeContainer.appendChild(more);
                     }
-                    
-                    dot.textContent = t.title;
-                    taskDotContainer.appendChild(dot);
-                });
+                    dateCell.appendChild(taskBadgeContainer);
+                }
 
-                dayCell.appendChild(taskDotContainer);
-                calendarGrid.appendChild(dayCell);
+                calendarGrid.appendChild(dateCell);
             }
         }
 
-        // 📋 一覧リストのレンダリング
+        // タスク一覧のレンダリング
         function renderTaskList() {
             taskListContainer.innerHTML = "";
-            const filtered = getFilteredTasks();
-            listCountLabel.textContent = `${filtered.length}件の予定`;
+            let allTasks = [
+                ...state.privateTasks.map(t => ({...t, isPrivate: true})),
+                ...state.globalTasks.map(t => ({...t, isPrivate: false}))
+            ];
 
-            if (filtered.length === 0) {
-                taskListContainer.innerHTML = `
-                    <div class="text-center p-8 bg-white rounded-2xl border border-slate-100 text-slate-400 text-xs font-medium">
-                        <i class="fa-regular fa-folder-open text-2xl block mb-2 text-slate-300"></i>
-                        該当する予定は見つかりませんでした。
-                    </div>`;
+            if (state.filterScope === "global") allTasks = allTasks.filter(t => !t.isPrivate);
+            if (state.filterScope === "private") allTasks = allTasks.filter(t => t.isPrivate);
+            if (state.filterStatus === "completed") allTasks = allTasks.filter(t => t.status === "完了");
+            if (state.filterStatus === "uncompleted") allTasks = allTasks.filter(t => t.status !== "完了");
+
+            // 期限順に並び替え
+            allTasks.sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+            listCountLabel.textContent = `${allTasks.length}件の予定`;
+
+            if (allTasks.length === 0) {
+                taskListContainer.innerHTML = `<div class="text-center p-8 bg-white border rounded-2xl text-slate-400 text-xs font-bold">表示条件に合うタスクはありません</div>`;
                 return;
             }
 
-            filtered.forEach(t => {
+            allTasks.forEach(t => {
                 const card = document.createElement('div');
-                const isDone = (t.status === "完了済み" || t.status === "完了");
+                card.className = "bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between space-x-3";
                 
-                card.className = `bg-white p-4 rounded-2xl border transition-all duration-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isDone ? 'opacity-65 border-slate-200 bg-slate-50/50' : 'border-slate-200 hover:border-indigo-300'}`;
+                const formattedDate = t.deadline.replace('T', ' ');
 
-                // 左側：情報エリア
-                const leftArea = document.createElement('div');
-                leftArea.className = "space-y-1.5 flex-grow";
-
-                const badgeLine = document.createElement('div');
-                badgeLine.className = "flex flex-wrap items-center gap-1.5 text-[10px] font-bold";
-
-                // カテゴリバッジ
-                const subBadge = document.createElement('span');
-                subBadge.className = "px-2 py-0.5 rounded-md bg-slate-100 text-slate-600";
-                subBadge.textContent = t.subject || "その他";
-                badgeLine.appendChild(subBadge);
-
-                // 公開範囲バッジ
-                const scopeBadge = document.createElement('span');
-                if (t.isPrivate) {
-                    scopeBadge.className = "px-2 py-0.5 rounded-md bg-violet-100 text-violet-700 flex items-center gap-1";
-                    scopeBadge.innerHTML = `<i class="fa-solid fa-lock text-[8px]"></i>自分用`;
-                } else {
-                    scopeBadge.className = "px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 flex items-center gap-1";
-                    scopeBadge.innerHTML = `<i class="fa-solid fa-users text-[8px]"></i>全員共有`;
-                }
-                badgeLine.appendChild(scopeBadge);
-
-                // 期限日時
-                const timeStr = t.deadline ? t.deadline.substring(0, 16) : "未設定";
-                const deadlineInfo = document.createElement('span');
-                deadlineInfo.className = "text-slate-500 font-medium flex items-center ml-1 text-xs";
-                deadlineInfo.innerHTML = `<i class="fa-regular fa-clock mr-1 text-[11px]"></i>${timeStr}`;
-
-                leftArea.appendChild(badgeLine);
-
-                const titleEl = document.createElement('h4');
-                titleEl.className = `text-sm font-bold text-slate-800 ${isDone ? 'line-through text-slate-400' : ''}`;
-                titleEl.textContent = t.title;
-                leftArea.appendChild(titleEl);
-
-                if (t.memo) {
-                    const memoEl = document.createElement('p');
-                    memoEl.className = "text-xs text-slate-400 font-medium whitespace-pre-wrap leading-relaxed bg-slate-50 p-2 rounded-xl mt-1";
-                    memoEl.textContent = t.memo;
-                    leftArea.appendChild(memoEl);
-                }
-
-                card.appendChild(leftArea);
-
-                // 右側：操作ボタンエリア
-                const rightArea = document.createElement('div');
-                rightArea.className = "flex items-center space-x-2 self-end sm:self-center flex-shrink-0";
-
-                // 完了チェックボタン
-                const checkBtn = document.createElement('button');
-                checkBtn.onclick = () => toggleTaskStatus(t.id, t.status, t.isPrivate);
-                if (isDone) {
-                    checkBtn.className = "px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 shadow-sm";
-                    checkBtn.innerHTML = `<i class="fa-solid fa-circle-check"></i><span>完了</span>`;
-                } else {
-                    checkBtn.className = "px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center space-x-1";
-                    checkBtn.innerHTML = `<i class="fa-regular fa-circle"></i><span>未完了</span>`;
-                }
-                rightArea.appendChild(checkBtn);
-
-                // 削除ゴミ箱ボタン（作成者または管理者のみ削除可能にする仕様）
-                if (t.isPrivate || state.currentUser.isAdmin || t.createdBy === state.currentUser.id) {
-                    const delBtn = document.createElement('button');
-                    delBtn.onclick = () => deleteTask(t.id, t.isPrivate);
-                    delBtn.className = "p-2 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-400 hover:text-rose-500 rounded-xl transition";
-                    delBtn.innerHTML = `<i class="fa-solid fa-trash-can text-xs"></i>`;
-                    rightArea.appendChild(delBtn);
-                }
-
-                card.appendChild(rightArea);
+                card.innerHTML = `
+                    <div class="flex items-start space-x-3">
+                        <button onclick="toggleTaskStatus('${t.id}', ${t.isPrivate}, '${t.status}')" class="mt-0.5 text-lg ${t.status === '完了' ? 'text-emerald-500' : 'text-slate-300 hover:text-indigo-500'} transition">
+                            <i class="${t.status === '完了' ? 'fa-solid fa-circle-check' : 'fa-regular fa-circle'}"></i>
+                        </button>
+                        <div>
+                            <div class="flex items-center space-x-2 flex-wrap">
+                                <span class="text-xs font-bold px-2 py-0.5 rounded ${t.isPrivate ? 'bg-violet-50 text-violet-600 border border-violet-100' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}">${t.isPrivate ? '自分用' : '共有ボード'}</span>
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${t.subject}</span>
+                                <span class="text-[10px] text-slate-400 font-medium">⏰ ${formattedDate}</span>
+                            </div>
+                            <h4 class="text-sm font-bold text-slate-800 mt-1.5 ${t.status === '完了' ? 'line-through text-slate-400' : ''}">${t.title}</h4>
+                            ${t.memo ? `<p class="text-xs text-slate-500 mt-1 bg-slate-50 p-2 rounded-lg border border-slate-100">${t.memo}</p>` : ''}
+                            <span class="text-[9px] text-slate-400 block mt-1">作成者: ${t.createdBy || '不明'}</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteTask('${t.id}', ${t.isPrivate})" class="p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition self-center">
+                        <i class="fa-regular fa-trash-can text-sm"></i>
+                    </button>
+                `;
                 taskListContainer.appendChild(card);
             });
         }
 
-        // 管理者：メンバー一覧のレンダリング
-        function renderUsersList() {
+        // タスクのステータス変更（完了・未完了切り替え）
+        window.toggleTaskStatus = async function(id, isPrivate, currentStatus) {
+            const nextStatus = currentStatus === "完了" ? "未着手" : "完了";
+            
+            if (isPrivate) {
+                const target = state.privateTasks.find(t => t.id === id);
+                if (target) {
+                    target.status = nextStatus;
+                    localStorage.setItem('task_share_private_tasks', JSON.stringify(state.privateTasks));
+                    showToast("ステータスを更新しました");
+                    updateSummaryUi();
+                    renderTaskList();
+                }
+            } else {
+                if (!state.gasUrl) return;
+                try {
+                    const res = await fetch(state.gasUrl, {
+                        method: "POST",
+                        body: JSON.stringify({ action: "updateTaskStatus", id, status: nextStatus })
+                    });
+                    const result = await res.json();
+                    if (result.status === "success") {
+                        const target = state.globalTasks.find(t => t.id === id);
+                        if (target) target.status = nextStatus;
+                        localStorage.setItem('task_share_global_tasks', JSON.stringify(state.globalTasks));
+                        showToast("共有ボードのステータスを更新しました");
+                        updateSummaryUi();
+                        renderTaskList();
+                    }
+                } catch(e) {
+                    showToast("サーバーとの同期に失敗しました", "error");
+                }
+            }
+        };
+
+        // タスク削除処理
+        window.deleteTask = async function(id, isPrivate) {
+            if (!confirm("このタスクを完全に削除しますか？")) return;
+
+            if (isPrivate) {
+                state.privateTasks = state.privateTasks.filter(t => t.id !== id);
+                localStorage.setItem('task_share_private_tasks', JSON.stringify(state.privateTasks));
+                showToast("タスクを削除しました");
+                updateSummaryUi();
+                renderTaskList();
+            } else {
+                if (!state.gasUrl) return;
+                try {
+                    const res = await fetch(state.gasUrl, {
+                        method: "POST",
+                        body: JSON.stringify({ action: "deleteTask", id })
+                    });
+                    const result = await res.json();
+                    if (result.status === "success") {
+                        state.globalTasks = state.globalTasks.filter(t => t.id !== id);
+                        localStorage.setItem('task_share_global_tasks', JSON.stringify(state.globalTasks));
+                        showToast("共有ボードから削除しました");
+                        updateSummaryUi();
+                        renderTaskList();
+                    }
+                } catch(e) {
+                    showToast("サーバーからの削除に失敗しました", "error");
+                }
+            }
+        };
+
+        // 管理者：GAS連携設定の保存
+        function handleSaveGasConfig() {
+            const url = gasUrlInput.value.trim();
+            if (!url.startsWith("https://script.google.com/")) {
+                showToast("正しいGASのウェブアプリURLを入力してください", "error");
+                return;
+            }
+            localStorage.setItem('task_share_gas_url', url);
+            state.gasUrl = url;
+            showToast("GAS連携URLを保存しました。再接続します。");
+            loadAndSyncData();
+        }
+
+        // 管理者：メンバー追加
+        async function handleAddUser(e) {
+            e.preventDefault();
+            const id = newUserIdInput.value.trim();
+            const name = newUserNameInput.value.trim();
+            const pass = newUserPassInput.value.trim();
+
+            if (!id || !name || !pass) return;
+
+            const newUser = { id, name, pass, isAdmin: false };
+
+            if (state.gasUrl) {
+                try {
+                    const res = await fetch(state.gasUrl, {
+                        method: "POST",
+                        body: JSON.stringify({ action: "createUser", ...newUser })
+                    });
+                    const result = await res.json();
+                    if (result.status === "success") {
+                        state.users.push(newUser);
+                        localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                        showToast(`${name}さんをスプレッドシートに同期追加しました`);
+                        newUserForm.reset();
+                        renderAdminUsersList();
+                    }
+                } catch(e) {
+                    showToast("サーバーへのユーザー追加に失敗しました", "error");
+                }
+            } else {
+                state.users.push(newUser);
+                localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                showToast(`${name}さんをローカルに追加しました（未同期）`);
+                newUserForm.reset();
+                renderAdminUsersList();
+            }
+        }
+
+        // 管理者：メンバー一覧描画と削除
+        function renderAdminUsersList() {
             usersListContainer.innerHTML = "";
             userCountLabel.textContent = `${state.users.length}名`;
 
             state.users.forEach(u => {
-                const row = document.createElement('div');
-                row.className = "flex items-center justify-between p-2 bg-white rounded-xl border border-slate-100 text-xs shadow-sm";
-                
-                row.innerHTML = `
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold text-slate-700">${u.name}</span>
-                        <span class="text-[10px] text-slate-400">ID: ${u.id}</span>
-                        ${u.isAdmin ? '<span class="text-[9px] bg-indigo-50 text-indigo-600 font-bold px-1 rounded">管理者</span>' : ''}
+                const item = document.createElement('div');
+                item.className = "flex items-center justify-between p-2 bg-white rounded-xl border text-xs";
+                item.innerHTML = `
+                    <div>
+                        <span class="font-bold text-slate-800">${u.name}</span>
+                        <span class="text-slate-400 pl-2">ID: ${u.id} | Pass: ${u.pass}</span>
+                        ${u.isAdmin ? '<span class="ml-2 text-[9px] bg-indigo-50 text-indigo-600 px-1 py-0.5 font-bold rounded">管理者</span>' : ''}
                     </div>
+                    ${u.id !== ADMIN_ID ? `
+                        <button onclick="deleteUser('${u.id}')" class="text-slate-300 hover:text-rose-500 p-1">
+                            <i class="fa-solid fa-user-minus"></i>
+                        </button>
+                    ` : '<span>-</span>'}
                 `;
-
-                if (u.id !== "admin") {
-                    const delBtn = document.createElement('button');
-                    delBtn.onclick = () => deleteUser(u.id);
-                    delBtn.className = "text-slate-400 hover:text-rose-500 font-bold px-2 py-1 hover:bg-rose-50 rounded transition text-[10px]";
-                    delBtn.textContent = "削除";
-                    row.appendChild(delBtn);
-                }
-                usersListContainer.appendChild(row);
+                usersListContainer.appendChild(item);
             });
         }
 
-        // トースト通知を表示
-        function showToast(msg, type = "success") {
-            toastMessage.textContent = msg;
-            if (type === "success") {
-                toastIcon.className = "text-emerald-400";
-                toastIcon.innerHTML = `<i class="fa-solid fa-circle-check"></i>`;
+        window.deleteUser = async function(id) {
+            if (!confirm("このメンバーを削除しますか？")) return;
+            
+            if (state.gasUrl) {
+                try {
+                    const res = await fetch(state.gasUrl, {
+                        method: "POST",
+                        body: JSON.stringify({ action: "deleteUser", id })
+                    });
+                    const result = await res.json();
+                    if (result.status === "success") {
+                        state.users = state.users.filter(u => u.id !== id);
+                        localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                        showToast("メンバーをスプレッドシートから削除しました");
+                        renderAdminUsersList();
+                    }
+                } catch(e) {
+                    showToast("ユーザーの同期削除に失敗しました", "error");
+                }
             } else {
-                toastIcon.className = "text-rose-400";
-                toastIcon.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i>`;
+                state.users = state.users.filter(u => u.id !== id);
+                localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                showToast("メンバーをローカルから削除しました");
+                renderAdminUsersList();
             }
+        };
 
-            toastNotification.classList.remove('translate-y-20', 'opacity-0');
-            setTimeout(() => {
-                toastNotification.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
-        }
     </script>
 </body>
 </html>
