@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>タスクシェア | スプレッドシート共有＆個人カレンダー</title>
+    <title>タスクシェア | スプレッドシート同期＆個人カレンダー</title>
+    <!-- PWA用マニフェスト -->
     <link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22%E3%22%2C%22short_name%22%3A%22%E3%22%2D%7D">
     <meta name="theme-color" content="#6366f1">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/906/906334.png">
+    <link class="rounded-xl" rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/906/906334.png">
     
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -25,6 +29,7 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
+    <!-- 🔑 ログイン画面 -->
     <div id="loginOverlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
         <div class="bg-white p-6 md:p-8 rounded-3xl max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-6">
             <div class="inline-flex bg-indigo-50 text-indigo-600 p-4 rounded-full shadow-inner">
@@ -46,14 +51,16 @@
                         class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm box-border">
                 </div>
                 <p id="loginErrorMsg" class="text-rose-500 text-xs font-semibold text-center hidden">IDまたはパスワードが正しくありません</p>
-                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all duration-200 text-sm shadow-lg shadow-indigo-100">
-                    サインイン
+                <button type="submit" id="loginBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all duration-200 text-sm shadow-lg shadow-indigo-100 flex items-center justify-center space-x-2">
+                    <span>サインイン</span>
                 </button>
             </form>
         </div>
     </div>
 
+    <!-- メインコンテンツ -->
     <div id="mainContent" class="hidden flex-grow flex flex-col">
+        <!-- ナビゲーションバー -->
         <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
             <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
                 <div class="flex items-center space-x-3">
@@ -71,15 +78,18 @@
                         <span id="currentUserName">読み込み中...</span>
                     </span>
                     
+                    <!-- ☀️ 朝7時自動通知設定ボタン -->
                     <button id="morningNotifyBtn" class="hidden flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold transition-all duration-200 border border-amber-200">
                         <i id="morningNotifyIcon" class="fa-solid fa-sun text-amber-500"></i>
                         <span id="morningNotifyText">朝7時通知: ON</span>
                     </button>
 
+                    <!-- 🔒 システム設定ボタン（管理者のみ表示） -->
                     <button id="adminConsoleBtn" class="hidden flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all duration-200 border border-slate-200">
                         <i class="fa-solid fa-user-gear"></i>
                         <span>システム設定</span>
                     </button>
+                    <!-- ログアウト -->
                     <button id="logoutBtn" class="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition">
                         <i class="fa-solid fa-right-from-bracket"></i>
                     </button>
@@ -89,7 +99,9 @@
 
         <main class="flex-grow max-w-6xl w-full mx-auto px-4 py-6 md:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
             
+            <!-- 左サイドバー: 課題登録フォーム & 状態統計 -->
             <div class="lg:col-span-4 space-y-6">
+                <!-- 📊 スプレッドシート接続ステータス -->
                 <div id="connectionStatus" class="p-4 rounded-2xl border transition-all duration-300 flex items-center space-x-3 bg-amber-50 border-amber-200 text-amber-800">
                     <div id="statusDot" class="w-2.5 h-2.5 bg-amber-500 rounded-full flex-shrink-0 animate-pulse"></div>
                     <div class="text-xs">
@@ -98,12 +110,14 @@
                     </div>
                 </div>
 
+                <!-- 課題登録カード -->
                 <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-4 flex items-center">
                         <i class="fa-solid fa-plus-circle text-indigo-500 mr-2"></i> 新しい予定を登録
                     </h2>
                     
                     <form id="taskForm" class="space-y-4">
+                        <!-- 🔒 共有か自分用かの設定 -->
                         <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
                             <label class="block text-xs font-bold text-slate-600 mb-2 flex items-center justify-between">
                                 <span>保存先・公開範囲</span>
@@ -152,6 +166,7 @@
                     </form>
                 </div>
 
+                <!-- 状態集計 -->
                 <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                     <h3 class="text-sm font-bold text-slate-900 mb-3">状況サマリー（あなた専用）</h3>
                     <div class="grid grid-cols-3 gap-2 text-center">
@@ -171,18 +186,21 @@
                 </div>
             </div>
 
+            <!-- 一覧 & カレンダー領域 -->
             <div class="lg:col-span-8 space-y-6">
+                <!-- タブ切り替え -->
                 <div class="bg-white p-1.5 rounded-2xl border border-slate-200 flex space-x-1 shadow-sm">
-                    <button id="tabCalendarBtn" class="flex-1 py-2 px-3 text-sm font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 bg-indigo-600 text-white">
+                    <button id="tabCalendarBtn" class="flex-1 py-2 px-3 text-sm font-bold rounded-xl bg-indigo-600 text-white">
                         <i class="fa-regular fa-calendar-days"></i>
                         <span>カレンダーで見る</span>
                     </button>
-                    <button id="tabListBtn" class="flex-1 py-2 px-3 text-sm font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 text-slate-600 hover:bg-slate-100">
+                    <button id="tabListBtn" class="flex-1 py-2 px-3 text-sm font-bold rounded-xl text-slate-600 hover:bg-slate-100">
                         <i class="fa-solid fa-list-ul"></i>
                         <span>一覧で見る</span>
                     </button>
                 </div>
 
+                <!-- カレンダー表示エリア -->
                 <div id="calendarView" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm transition-all duration-300">
                     <div class="flex items-center justify-between mb-4">
                         <button id="prevMonthBtn" class="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition">
@@ -199,6 +217,7 @@
                     <div id="calendarGrid" class="grid grid-cols-7 gap-1 md:gap-2 min-h-[300px]"></div>
                 </div>
 
+                <!-- リスト表示エリア -->
                 <div id="listView" class="space-y-4 hidden transition-all duration-300">
                     <div class="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                         <span class="text-xs font-bold text-slate-500" id="listCountLabel">0件の予定</span>
@@ -220,6 +239,7 @@
             </div>
         </main>
 
+        <!-- 🔒 管理者用システム連携モーダル -->
         <div id="adminModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
             <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]">
                 <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -232,6 +252,7 @@
                 </div>
                 
                 <div class="p-6 overflow-y-auto space-y-6 flex-grow">
+                    <!-- 📦 Googleスプレッドシート（GAS）連携セクション -->
                     <div class="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 space-y-3">
                         <h4 class="text-xs font-bold text-emerald-900 flex items-center">
                             <i class="fa-solid fa-table text-sm mr-1.5"></i> Googleスプレッドシート（GAS）連携
@@ -247,18 +268,20 @@
                         </div>
                     </div>
 
+                    <!-- 新規ユーザー登録 -->
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                        <h4 class="text-xs font-bold text-slate-700">👤 アカウントのメンバー追加（ローカル保存）</h4>
+                        <h4 class="text-xs font-bold text-slate-700">👤 アカウントのメンバー追加（スプレッド同期）</h4>
                         <form id="newUserForm" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <input type="text" id="newUserId" required placeholder="ログインID (例: taro)" class="p-2 border rounded-lg text-xs bg-white">
                             <input type="text" id="newUserName" required placeholder="表示名 (例: たろう)" class="p-2 border rounded-lg text-xs bg-white">
                             <input type="text" id="newUserPass" required placeholder="パスワード" class="p-2 border rounded-lg text-xs bg-white">
-                            <button type="submit" class="sm:col-span-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 rounded-lg text-xs transition">
-                                新しいユーザーを作成
+                            <button type="submit" id="addUserBtn" class="sm:col-span-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 rounded-lg text-xs transition flex items-center justify-center space-x-1">
+                                <span>新しいユーザーを作成</span>
                             </button>
                         </form>
                     </div>
 
+                    <!-- アカウント一覧 -->
                     <div class="space-y-2">
                         <h4 class="text-xs font-bold text-slate-700 flex justify-between items-center">
                             <span>登録メンバー一覧</span>
@@ -270,12 +293,13 @@
                 
                 <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
                     <button id="closeAdminFooterBtn" class="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition">
-                        設定を終了
+                        設定を完了
                     </button>
                 </div>
             </div>
         </div>
 
+        <!-- トースト通知 -->
         <div id="toastNotification" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 text-sm">
             <span id="toastIcon" class="text-emerald-400"><i class="fa-solid fa-circle-check"></i></span>
             <span id="toastMessage">文言</span>
@@ -289,16 +313,14 @@
     <script>
         const ADMIN_ID = "admin"; 
         const DEFAULT_LOCAL_USERS = [
-            { id: "admin", name: "管理者", pass: "admin1234", isAdmin: true },
-            { id: "taro", name: "たろう", pass: "1234", isAdmin: false },
-            { id: "hanako", name: "はなこ", pass: "1234", isAdmin: false }
+            { id: "admin", name: "管理者", pass: "admin1234", isAdmin: true }
         ];
 
         const state = {
             currentUser: null, 
             globalTasks: [], 
             privateTasks: [], 
-            users: [], 
+            users: DEFAULT_LOCAL_USERS, 
             currentView: "calendar",
             currentDate: new Date(), 
             filterScope: "all",
@@ -365,71 +387,8 @@
         const morningNotifyBtn = document.getElementById('morningNotifyBtn');
         const morningNotifyIcon = document.getElementById('morningNotifyIcon');
         const morningNotifyText = document.getElementById('morningNotifyText');
-
-        window.onload = function() {
-            const savedUser = localStorage.getItem('task_share_user_session');
-            if (savedUser) {
-                state.currentUser = JSON.parse(savedUser);
-                loginOverlay.classList.add('hidden');
-                mainContent.classList.remove('hidden');
-                initApp();
-            } else {
-                loginOverlay.classList.remove('hidden');
-                mainContent.classList.add('hidden');
-            }
-        };
-
-        loginForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const uid = loginUsernameInput.value.trim().toLowerCase();
-            const pass = loginPasswordInput.value.trim();
-
-            const localUsers = JSON.parse(localStorage.getItem('task_share_local_users')) || DEFAULT_LOCAL_USERS;
-            const found = localUsers.find(u => u.id === uid && u.pass === pass);
-
-            if (found) {
-                state.currentUser = { id: found.id, name: found.name, isAdmin: found.isAdmin || found.id === ADMIN_ID };
-                localStorage.setItem('task_share_user_session', JSON.stringify(state.currentUser));
-                loginOverlay.classList.add('hidden');
-                mainContent.classList.remove('hidden');
-                initApp();
-                showToast(`${state.currentUser.name}さん、ログインしました！`, "success");
-            } else {
-                loginErrorMsg.classList.remove('hidden');
-                loginPasswordInput.value = "";
-                loginPasswordInput.focus();
-            }
-        });
-
-        logoutBtn.addEventListener('click', () => {
-            if (confirm("ログアウトしますか？")) {
-                localStorage.removeItem('task_share_user_session');
-                location.reload();
-            }
-        });
-
-        function initApp() {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(12, 0, 0, 0);
-            taskDeadlineInput.value = new Date(tomorrow.getTime() - (tomorrow.getTimezoneOffset() * 60 * 1000)).toISOString().slice(0, 16);
-
-            currentUserNameEl.textContent = state.currentUser.name;
-
-            if (state.currentUser.isAdmin) {
-                adminConsoleBtn.classList.remove('hidden');
-            } else {
-                adminConsoleBtn.classList.add('hidden');
-            }
-
-            gasUrlInput.value = state.gasUrl;
-            state.users = JSON.parse(localStorage.getItem('task_share_local_users')) || DEFAULT_LOCAL_USERS;
-
-            setupEventListeners();
-            loadAndSyncData();
-            initNotificationSystem();
-            setInterval(checkAllNotifications, 60000);
-        }
+        const loginBtn = document.getElementById('loginBtn');
+        const addUserBtn = document.getElementById('addUserBtn');
 
         function setupEventListeners() {
             taskForm.addEventListener('submit', handleTaskSubmit);
@@ -445,6 +404,7 @@
             adminConsoleBtn.addEventListener('click', () => {
                 if (!state.currentUser.isAdmin) return;
                 adminModal.classList.remove('hidden');
+                setTimeout(() => adminModal.firstElementChild.classList.remove('scale-95'), 10);
             });
             
             const closeAdmin = () => adminModal.classList.add('hidden');
@@ -472,7 +432,43 @@
             }
         }
 
-        // --- スプレッドシート(GAS) 通信処理 ---
+        // --- 認証データの読込と同期 ---
+        async function loadAndSyncData() {
+            // 個人用（ローカル）データの読み込み
+            const localPriv = localStorage.getItem('task_share_private_tasks');
+            state.privateTasks = localPriv ? JSON.parse(localPriv).filter(t => t.ownerId === state.currentUser.id) : [];
+
+            if (state.gasUrl) {
+                updateStatusUi("connecting");
+                try {
+                    // スプレッドシートから [予定] と [ユーザーリスト] の両方を取得する
+                    const res = await fetch(state.gasUrl);
+                    if (!res.ok) throw new Error();
+                    const data = await res.json();
+                    
+                    state.globalTasks = data.tasks || [];
+                    state.users = data.users || DEFAULT_LOCAL_USERS;
+                    
+                    localStorage.setItem('task_share_global_tasks', JSON.stringify(state.globalTasks));
+                    localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                    updateStatusUi("online");
+                } catch(e) {
+                    updateStatusUi("error");
+                    state.globalTasks = JSON.parse(localStorage.getItem('task_share_global_tasks')) || [];
+                    state.users = JSON.parse(localStorage.getItem('task_share_local_users')) || DEFAULT_LOCAL_USERS;
+                }
+            } else {
+                updateStatusUi("offline");
+                state.globalTasks = JSON.parse(localStorage.getItem('task_share_global_tasks')) || [];
+                state.users = JSON.parse(localStorage.getItem('task_share_local_users')) || DEFAULT_LOCAL_USERS;
+            }
+
+            updateSummaryCounters();
+            renderCalendar();
+            renderTaskList();
+            renderUsersList();
+        }
+
         async function handleSaveGasConfig() {
             if (!state.currentUser.isAdmin) return;
             const url = gasUrlInput.value.trim();
@@ -497,49 +493,20 @@
             }
         }
 
-        async function loadAndSyncData() {
-            // 個人用タスクの読み込み
-            const localPriv = localStorage.getItem('task_share_private_tasks');
-            state.privateTasks = localPriv ? JSON.parse(localPriv).filter(t => t.ownerId === state.currentUser.id) : [];
-
-            if (state.gasUrl) {
-                updateStatusUi("connecting");
-                try {
-                    const res = await fetch(state.gasUrl);
-                    if (!res.ok) throw new Error();
-                    const data = await res.json();
-                    state.globalTasks = data;
-                    localStorage.setItem('task_share_global_tasks', JSON.stringify(data));
-                    updateStatusUi("online");
-                } catch(e) {
-                    updateStatusUi("error");
-                    state.globalTasks = JSON.parse(localStorage.getItem('task_share_global_tasks')) || [];
-                }
-            } else {
-                updateStatusUi("offline");
-                state.globalTasks = JSON.parse(localStorage.getItem('task_share_global_tasks')) || [];
-            }
-
-            updateSummaryCounters();
-            renderCalendar();
-            renderTaskList();
-            renderUsersList();
-        }
-
         function updateStatusUi(mode) {
             if (mode === "online") {
                 statusDot.className = "w-2.5 h-2.5 bg-emerald-500 rounded-full flex-shrink-0";
                 statusTitle.textContent = "スプレッドシート同期中";
-                statusDesc.textContent = "みんなの共有予定はリアルタイムでシートと同期されています。";
+                statusDesc.textContent = "予定およびメンバーアカウントはGoogleスプレッドシートと安全に同期されています。";
                 connectionStatus.className = "p-4 rounded-2xl border flex items-center space-x-3 bg-emerald-50 border-emerald-200 text-emerald-800";
             } else if (mode === "connecting") {
                 statusDot.className = "w-2.5 h-2.5 bg-sky-500 rounded-full flex-shrink-0 animate-spin";
                 statusTitle.textContent = "同期読み込み中";
-                statusDesc.textContent = "Googleスプレッドシートから最新データを取得しています...";
+                statusDesc.textContent = "Googleスプレッドシートから最新データを同期しています...";
                 connectionStatus.className = "p-4 rounded-2xl border flex items-center space-x-3 bg-sky-50 border-sky-200 text-sky-800";
             } else {
                 statusDot.className = "w-2.5 h-2.5 bg-amber-500 rounded-full flex-shrink-0 animate-pulse";
-                statusTitle.textContent = "ローカル動作中";
+                statusTitle.textContent = "ローカル保存モード中";
                 statusDesc.textContent = "管理者（admin）のみ、設定画面からスプレッドシート連携を行えます。";
                 connectionStatus.className = "p-4 rounded-2xl border flex items-center space-x-3 bg-amber-50 border-amber-200 text-amber-800";
             }
@@ -575,7 +542,7 @@
                     try {
                         const res = await fetch(state.gasUrl, {
                             method: "POST",
-                            body: JSON.stringify({ action: "create", ...newTask })
+                            body: JSON.stringify({ action: "createTask", ...newTask })
                         });
                         if (res.ok) {
                             showToast("全員の共有に登録しました！ 📊", "success");
@@ -595,13 +562,6 @@
             submitBtn.disabled = false;
         }
 
-        function clearTaskForm() {
-            taskTitleInput.value = "";
-            taskSubjectInput.value = "";
-            taskMemoInput.value = "";
-            setTaskScope("global");
-        }
-
         async function toggleTaskStatus(id, isPrivate, currentStatus) {
             const nextStatus = !currentStatus;
             if (isPrivate) {
@@ -615,7 +575,7 @@
                     try {
                         await fetch(state.gasUrl, {
                             method: "POST",
-                            body: JSON.stringify({ action: "updateStatus", id: id, status: nextStatus })
+                            body: JSON.stringify({ action: "updateTaskStatus", id: id, status: nextStatus })
                         });
                         await loadAndSyncData();
                     } catch(e) { showToast("同期エラー", "error"); }
@@ -640,7 +600,7 @@
                     try {
                         await fetch(state.gasUrl, {
                             method: "POST",
-                            body: JSON.stringify({ action: "delete", id: id })
+                            body: JSON.stringify({ action: "deleteTask", id: id })
                         });
                         await loadAndSyncData();
                     } catch(e) { showToast("削除エラー", "error"); }
@@ -652,8 +612,8 @@
             }
         }
 
-        // --- メンバー管理 ---
-        function handleAddUser(e) {
+        // --- メンバー追加（クラウド同期） ---
+        async function handleAddUser(e) {
             e.preventDefault();
             if (!state.currentUser.isAdmin) return;
             const uid = newUserIdInput.value.trim().toLowerCase();
@@ -661,22 +621,62 @@
             const pass = newUserPassInput.value.trim();
 
             if (state.users.find(u => u.id === uid)) { showToast("このIDは既に使用されています", "error"); return; }
-            state.users.push({ id: uid, name: name, pass: pass, isAdmin: false });
-            localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
-            newUserForm.reset();
-            loadAndSyncData();
-            showToast(`メンバー「${name}」を追加しました`, "success");
+            
+            const newUser = { id: uid, name: name, pass: pass, isAdmin: false };
+            
+            if (state.gasUrl) {
+                addUserBtn.disabled = true;
+                addUserBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>同期送信中...</span>`;
+                try {
+                    const res = await fetch(state.gasUrl, {
+                        method: "POST",
+                        body: JSON.stringify({ action: "createUser", ...newUser })
+                    });
+                    if (res.ok) {
+                        newUserForm.reset();
+                        await loadAndSyncData();
+                        showToast(`メンバー「${name}」を追加しました！ ☁️`, "success");
+                    } else throw new Error();
+                } catch(err) {
+                    showToast("アカウントの登録同期に失敗しました", "error");
+                } finally {
+                    addUserBtn.disabled = false;
+                    addUserBtn.innerHTML = `<span>新しいユーザーを作成</span>`;
+                }
+            } else {
+                state.users.push(newUser);
+                localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                newUserForm.reset();
+                await loadAndSyncData();
+                showToast(`メンバー「${name}」を追加しました（ローカル）`, "success");
+            }
         }
 
-        function deleteUser(uid, name) {
+        async function deleteUser(uid, name) {
             if (!state.currentUser.isAdmin || uid === ADMIN_ID) return;
-            if (!confirm(`メンバー 「${name}」 を削除しますか？`)) return;
-            state.users = state.users.filter(u => u.id !== uid);
-            localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
-            loadAndSyncData();
+            if (!confirm(`メンバー 「${name}」 を削除しますか？\n（削除するとそのメンバーはログインできなくなります）`)) return;
+            
+            if (state.gasUrl) {
+                showToast("削除同期中...", "info");
+                try {
+                    const res = await fetch(state.gasUrl, {
+                        method: "POST",
+                        body: JSON.stringify({ action: "deleteUser", id: uid })
+                    });
+                    if (res.ok) {
+                        showToast("メンバーアカウントを削除しました", "success");
+                        await loadAndSyncData();
+                    } else throw new Error();
+                } catch(e) { showToast("アカウントの削除同期に失敗しました", "error"); }
+            } else {
+                state.users = state.users.filter(u => u.id !== uid);
+                localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                await loadAndSyncData();
+                showToast("削除しました(ローカル)", "success");
+            }
         }
 
-        // --- 画面描画ロジック ---
+        // --- 画面描画 ---
         function getAllTasks() { return [...state.globalTasks, ...state.privateTasks]; }
 
         function updateSummaryCounters() {
@@ -787,7 +787,7 @@
                         </button>
                         <div>
                             <div class="flex flex-wrap gap-1 items-center mb-1">
-                                <span class="text-[9px] px-1.5 py-0.5 font-bold rounded ${isPriv ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}">${isPriv ? '🔒 個人' : '📊 共有シート'}</span>
+                                <span class="text-[9px] px-1.5 py-0.5 font-bold rounded ${isPriv ? 'bg-violet-100 text-violet-700' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}">${isPriv ? '🔒 個人' : '📊 共有シート'}</span>
                                 ${t.subject ? `<span class="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded">${t.subject}</span>` : ''}
                             </div>
                             <h4 class="text-sm font-bold ${t.status ? 'line-through text-slate-400' : ''}">${t.title}</h4>
@@ -809,11 +809,54 @@
                 div.className = "flex items-center justify-between p-2 bg-white border rounded-lg text-xs";
                 div.innerHTML = `
                     <div><b>${u.name}</b> <span class="text-slate-400">(ID: ${u.id})</span></div>
-                    ${u.id !== ADMIN_ID ? `<button onclick="deleteUser('${u.id}', '${u.name}')" class="text-rose-500"><i class="fa-solid fa-trash-can"></i></button>` : '<span class="text-[10px] bg-amber-100 text-amber-700 font-bold px-1 rounded">ホスト</span>'}
+                    ${u.id !== ADMIN_ID ? `<button onclick="deleteUser('${u.id}', '${u.name}')" class="text-rose-500"><i class="fa-solid fa-trash-can"></i></button>` : '<span class="text-[10px] bg-amber-100 text-amber-700 font-bold px-1 rounded">管理者</span>'}
                 `;
                 usersListContainer.appendChild(div);
             });
         }
+
+        // --- ログイン・認証管理処理 ---
+        loginForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const username = loginUsernameInput.value.trim().toLowerCase();
+            const password = loginPasswordInput.value.trim();
+
+            let foundUser = state.users.find(u => u.id === username && u.pass === password);
+
+            // スプレッドシート連携URLがある場合、ログイン時に一度最新リストを取り直す（新メンバー対応）
+            if (!foundUser && state.gasUrl) {
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin mr-1"></i><span>照会中...</span>`;
+                try {
+                    const res = await fetch(state.gasUrl);
+                    if (res.ok) {
+                        const data = await res.json();
+                        state.users = data.users || DEFAULT_LOCAL_USERS;
+                        localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+                        foundUser = state.users.find(u => u.id === username && u.pass === password);
+                    }
+                } catch(err) {
+                    console.error("ログイン時アカウント同期エラー", err);
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = `<span>サインイン</span>`;
+                }
+            }
+
+            if (foundUser) {
+                state.currentUser = foundUser;
+                localStorage.setItem('task_share_user_session', JSON.stringify(foundUser));
+                loginOverlay.classList.add('hidden');
+                mainContent.classList.remove('hidden');
+                
+                initApp();
+                showToast(`${foundUser.name}さん、ログインしました！`, "success");
+            } else {
+                loginErrorMsg.classList.remove('hidden');
+                loginPasswordInput.value = "";
+                loginPasswordInput.focus();
+            }
+        });
 
         // --- 通知システム ---
         function initNotificationSystem() {
@@ -862,3 +905,5 @@
     </script>
 </body>
 </html>
+
+```
