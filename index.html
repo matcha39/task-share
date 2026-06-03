@@ -427,7 +427,13 @@
 
         // ▼ ここにGAS URLを貼り付けると起動時に自動セット（ポップアップ不要）
         //   空文字のままにするとポップアップが表示されます
-        const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbyDSLpUjs1YT6EUlFR0rqj7ESlIbu5Ty0mJUXzxs6V0b9PHB99Ltn_o8dkvUwyO4N3hEQ/exec";
+        const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbzs9q38ruoDZcmZTyZqRQNZBqHQrrPWjTnwjp_2a1vD73EflUmWSJMUtCv9GiT7PyAmzg/exec";
+
+        // DEFAULT_GAS_URL が設定されていれば即座にlocalStorageへ書き込む
+        // （state初期化より前に実行することでstate.gasUrlに正しく反映される）
+        if (DEFAULT_GAS_URL && !localStorage.getItem('task_share_gas_url')) {
+            localStorage.setItem('task_share_gas_url', DEFAULT_GAS_URL);
+        }
 
         const state = {
             currentUser: null,
@@ -532,12 +538,6 @@
         window.addEventListener('DOMContentLoaded', async () => {
             // Service Worker 登録
             await registerServiceWorker();
-
-            // ── DEFAULT_GAS_URL が設定されていれば自動でlocalStorageへ注入 ──
-            if (DEFAULT_GAS_URL && !localStorage.getItem('task_share_gas_url')) {
-                localStorage.setItem('task_share_gas_url', DEFAULT_GAS_URL);
-                state.gasUrl = DEFAULT_GAS_URL;
-            }
 
             // キャッシュからユーザー復元
             const cachedUsers = localStorage.getItem('task_share_local_users');
