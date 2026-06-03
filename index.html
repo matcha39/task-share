@@ -92,7 +92,7 @@
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold text-slate-500 mb-1">パスワード</label>
-                    <input type="password" id="loginPassword" required placeholder="••••••••"
+                    <input type="password" id="loginPassword" required inputmode="numeric" pattern="[0-9]*" placeholder="数字のみ"
                         class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm box-border">
                 </div>
                 <p id="loginErrorMsg" class="text-rose-500 text-xs font-semibold text-center hidden">IDまたはパスワードが正しくありません</p>
@@ -109,33 +109,61 @@
          ===================================================== -->
     <div id="changePassOverlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[55] flex items-center justify-center p-4 hidden">
         <div class="bg-white p-6 md:p-8 rounded-3xl max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-5 slide-in">
-            <div class="inline-flex bg-amber-50 text-amber-600 p-4 rounded-full shadow-inner">
+
+            <!-- アイコン＆ヘッダー -->
+            <div class="inline-flex bg-amber-50 text-amber-500 p-4 rounded-full shadow-inner">
                 <i class="fa-solid fa-key text-3xl"></i>
             </div>
             <div>
-                <h2 class="text-lg font-bold text-slate-900">パスワードの設定</h2>
-                <p class="text-xs text-slate-500 mt-1">初回ログインです。<br>新しいパスワードを設定してください。</p>
+                <div class="inline-flex items-center space-x-2 bg-slate-100 rounded-xl px-3 py-1.5 mb-2">
+                    <i class="fa-solid fa-user text-slate-400 text-xs"></i>
+                    <span id="changePassUsername" class="text-sm font-bold text-slate-700">-</span>
+                </div>
+                <h2 class="text-lg font-bold text-slate-900">パスワードの新規設定</h2>
+                <p class="text-xs text-slate-500 mt-1">管理者から渡された初期パスワードで認証し、<br>新しいパスワードを設定してください。</p>
             </div>
-            <!-- 強度インジケーター -->
-            <div id="passStrengthBar" class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden hidden">
-                <div id="passStrengthFill" class="h-full rounded-full transition-all duration-300 w-0 bg-rose-400"></div>
+
+            <!-- パスワード強度バー -->
+            <div id="passStrengthWrap" class="space-y-1 hidden">
+                <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div id="passStrengthFill" class="h-full rounded-full transition-all duration-500 w-0"></div>
+                </div>
+                <p id="passStrengthLabel" class="text-[10px] text-right font-bold text-slate-400"></p>
             </div>
+
             <form id="changePassForm" class="space-y-3 text-left">
                 <div>
                     <label class="block text-[10px] font-bold text-slate-500 mb-1">新しいパスワード <span class="text-rose-400">*</span></label>
-                    <input type="password" id="newPassInput" required minlength="6" placeholder="6文字以上"
-                        class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm box-border">
+                    <div class="relative">
+                        <input type="password" id="newPassInput" required inputmode="numeric" pattern="[0-9]*" minlength="4" placeholder="数字のみ（4桁以上）"
+                            class="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm box-border">
+                        <button type="button" onclick="togglePassVis('newPassInput', this)"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500">
+                            <i class="fa-regular fa-eye text-sm"></i>
+                        </button>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold text-slate-500 mb-1">パスワード確認 <span class="text-rose-400">*</span></label>
-                    <input type="password" id="confirmPassInput" required placeholder="もう一度入力"
-                        class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm box-border">
+                    <div class="relative">
+                        <input type="password" id="confirmPassInput" required inputmode="numeric" pattern="[0-9]*" placeholder="もう一度入力"
+                            class="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm box-border">
+                        <button type="button" onclick="togglePassVis('confirmPassInput', this)"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500">
+                            <i class="fa-regular fa-eye text-sm"></i>
+                        </button>
+                    </div>
                 </div>
+
+                <!-- 一致インジケーター -->
+                <p id="passMatchHint" class="text-[10px] font-bold hidden"></p>
+                <!-- エラー -->
                 <p id="changePassError" class="text-rose-500 text-xs font-semibold text-center hidden"></p>
+
                 <button type="submit" id="changePassBtn"
-                    class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-xl transition-all duration-200 text-sm shadow-lg shadow-amber-100 flex items-center justify-center space-x-2">
+                    class="w-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold py-3 rounded-xl transition-all duration-200 text-sm shadow-lg shadow-amber-100 flex items-center justify-center space-x-2">
                     <i class="fa-solid fa-lock"></i>
-                    <span>パスワードを設定する</span>
+                    <span>パスワードを設定してログイン</span>
                 </button>
             </form>
         </div>
@@ -349,7 +377,7 @@
                         <form id="newUserForm" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <input type="text" id="newUserId" required placeholder="ログインID (例: taro)" class="p-2 border rounded-lg text-xs bg-white">
                             <input type="text" id="newUserName" required placeholder="表示名 (例: たろう)" class="p-2 border rounded-lg text-xs bg-white">
-                            <input type="text" id="newUserPass" required placeholder="パスワード" class="p-2 border rounded-lg text-xs bg-white">
+                            <input type="text" id="newUserPass" required inputmode="numeric" pattern="[0-9]*" placeholder="数字パスワード" class="p-2 border rounded-lg text-xs bg-white">
                             <button type="submit" id="addUserBtn"
                                 class="sm:col-span-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 rounded-lg text-xs transition flex items-center justify-center space-x-1">
                                 <span>新しいユーザーを作成</span>
@@ -396,6 +424,10 @@
         const DEFAULT_LOCAL_USERS = [
             { id: "admin", name: "管理者", pass: "admin1234", isAdmin: true }
         ];
+
+        // ▼ ここにGAS URLを貼り付けると起動時に自動セット（ポップアップ不要）
+        //   空文字のままにするとポップアップが表示されます
+        const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbyDSLpUjs1YT6EUlFR0rqj7ESlIbu5Ty0mJUXzxs6V0b9PHB99Ltn_o8dkvUwyO4N3hEQ/exec";
 
         const state = {
             currentUser: null,
@@ -488,8 +520,11 @@
         const confirmPassInput    = document.getElementById('confirmPassInput');
         const changePassError     = document.getElementById('changePassError');
         const changePassBtn       = document.getElementById('changePassBtn');
-        const passStrengthBar     = document.getElementById('passStrengthBar');
+        const passStrengthWrap    = document.getElementById('passStrengthWrap');
         const passStrengthFill    = document.getElementById('passStrengthFill');
+        const passStrengthLabel   = document.getElementById('passStrengthLabel');
+        const passMatchHint       = document.getElementById('passMatchHint');
+        const changePassUsername  = document.getElementById('changePassUsername');
 
         /* -------------------------------------------------------
            アプリ初期化
@@ -497,6 +532,12 @@
         window.addEventListener('DOMContentLoaded', async () => {
             // Service Worker 登録
             await registerServiceWorker();
+
+            // ── DEFAULT_GAS_URL が設定されていれば自動でlocalStorageへ注入 ──
+            if (DEFAULT_GAS_URL && !localStorage.getItem('task_share_gas_url')) {
+                localStorage.setItem('task_share_gas_url', DEFAULT_GAS_URL);
+                state.gasUrl = DEFAULT_GAS_URL;
+            }
 
             // キャッシュからユーザー復元
             const cachedUsers = localStorage.getItem('task_share_local_users');
@@ -831,6 +872,7 @@
             // パスワード変更フォーム
             changePassForm.addEventListener('submit', handleChangePass);
             newPassInput.addEventListener('input', updatePassStrength);
+            confirmPassInput.addEventListener('input', updatePassMatch);
         }
 
         /* -------------------------------------------------------
@@ -891,7 +933,7 @@
                 }
             }
 
-            const foundUser = state.users.find(u => u.id === username && u.pass === password);
+            const foundUser = state.users.find(u => u.id === username && String(u.pass) === String(password));
 
             if (foundUser) {
                 loginErrorMsg.classList.add('hidden');
@@ -900,7 +942,13 @@
                 if (foundUser.mustChangePass === true || foundUser.mustChangePass === "true" || foundUser.mustChangePass === "TRUE") {
                     state.currentUser = foundUser; // 一時保持
                     loginOverlay.classList.add('hidden');
+                    changePassUsername.textContent = foundUser.name;  // ユーザー名表示
+                    changePassForm.reset();
+                    passStrengthWrap.classList.add('hidden');
+                    passMatchHint.classList.add('hidden');
+                    changePassError.classList.add('hidden');
                     changePassOverlay.classList.remove('hidden');
+                    newPassInput.focus();
                     loginBtn.disabled = false;
                     loginBtn.innerHTML = '<span>サインイン</span>';
                     return;
@@ -952,21 +1000,68 @@
         }
 
         /* -------------------------------------------------------
-           パスワード強度インジケーター
+           パスワード表示切替
+        ------------------------------------------------------- */
+        window.togglePassVis = function(inputId, btn) {
+            const input = document.getElementById(inputId);
+            const icon  = btn.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'fa-regular fa-eye-slash text-sm';
+            } else {
+                input.type = 'password';
+                icon.className = 'fa-regular fa-eye text-sm';
+            }
+        };
+
+        /* -------------------------------------------------------
+           パスワード強度インジケーター（数字専用）
         ------------------------------------------------------- */
         function updatePassStrength() {
             const val = newPassInput.value;
-            passStrengthBar.classList.toggle('hidden', val.length === 0);
-            let score = 0;
-            if (val.length >= 6)  score++;
-            if (val.length >= 10) score++;
-            if (/[A-Z]/.test(val)) score++;
-            if (/[0-9]/.test(val)) score++;
-            if (/[^A-Za-z0-9]/.test(val)) score++;
-            const pct   = (score / 5) * 100;
-            const color = score <= 1 ? '#f87171' : score <= 3 ? '#fb923c' : '#34d399';
-            passStrengthFill.style.width  = pct + '%';
+
+            // 数字以外を自動除去
+            if (/[^0-9]/.test(val)) {
+                newPassInput.value = val.replace(/[^0-9]/g, '');
+            }
+
+            const digits = newPassInput.value.length;
+            passStrengthWrap.classList.toggle('hidden', digits === 0);
+            if (digits === 0) return;
+
+            // 桁数で強度を評価
+            let score, label, color;
+            if (digits < 4)      { score = 1; label = `あと ${4 - digits} 桁`;    color = '#f87171'; }
+            else if (digits < 6) { score = 3; label = `${digits}桁（普通）`;      color = '#fb923c'; }
+            else if (digits < 8) { score = 4; label = `${digits}桁（良い）`;      color = '#facc15'; }
+            else                 { score = 5; label = `${digits}桁（とても強い）`; color = '#10b981'; }
+
+            passStrengthFill.style.width           = (score / 5 * 100) + '%';
             passStrengthFill.style.backgroundColor = color;
+            passStrengthLabel.textContent          = label;
+            passStrengthLabel.style.color          = color;
+
+            updatePassMatch();
+        }
+
+        function updatePassMatch() {
+            const a = newPassInput.value;
+            const b = confirmPassInput.value;
+
+            // 確認欄も数字以外を除去
+            if (/[^0-9]/.test(b)) {
+                confirmPassInput.value = b.replace(/[^0-9]/g, '');
+            }
+
+            if (!confirmPassInput.value) { passMatchHint.classList.add('hidden'); return; }
+            passMatchHint.classList.remove('hidden');
+            if (a === confirmPassInput.value) {
+                passMatchHint.textContent = '✓ パスワードが一致しています';
+                passMatchHint.className   = 'text-[10px] font-bold text-emerald-500';
+            } else {
+                passMatchHint.textContent = '✗ パスワードが一致しません';
+                passMatchHint.className   = 'text-[10px] font-bold text-rose-500';
+            }
         }
 
         /* -------------------------------------------------------
@@ -979,8 +1074,13 @@
 
             changePassError.classList.add('hidden');
 
-            if (newPass.length < 6) {
-                changePassError.textContent = "パスワードは6文字以上で入力してください";
+            if (newPass.length < 4) {
+                changePassError.textContent = "パスワードは4桁以上の数字で入力してください";
+                changePassError.classList.remove('hidden');
+                return;
+            }
+            if (!/^[0-9]+$/.test(newPass)) {
+                changePassError.textContent = "数字のみ使用できます";
                 changePassError.classList.remove('hidden');
                 return;
             }
