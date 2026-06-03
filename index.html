@@ -105,6 +105,43 @@
     </div>
 
     <!-- =====================================================
+         ②-B パスワード変更オーバーレイ（初回ログイン時）
+         ===================================================== -->
+    <div id="changePassOverlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[55] flex items-center justify-center p-4 hidden">
+        <div class="bg-white p-6 md:p-8 rounded-3xl max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-5 slide-in">
+            <div class="inline-flex bg-amber-50 text-amber-600 p-4 rounded-full shadow-inner">
+                <i class="fa-solid fa-key text-3xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-bold text-slate-900">パスワードの設定</h2>
+                <p class="text-xs text-slate-500 mt-1">初回ログインです。<br>新しいパスワードを設定してください。</p>
+            </div>
+            <!-- 強度インジケーター -->
+            <div id="passStrengthBar" class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden hidden">
+                <div id="passStrengthFill" class="h-full rounded-full transition-all duration-300 w-0 bg-rose-400"></div>
+            </div>
+            <form id="changePassForm" class="space-y-3 text-left">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 mb-1">新しいパスワード <span class="text-rose-400">*</span></label>
+                    <input type="password" id="newPassInput" required minlength="6" placeholder="6文字以上"
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm box-border">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 mb-1">パスワード確認 <span class="text-rose-400">*</span></label>
+                    <input type="password" id="confirmPassInput" required placeholder="もう一度入力"
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm box-border">
+                </div>
+                <p id="changePassError" class="text-rose-500 text-xs font-semibold text-center hidden"></p>
+                <button type="submit" id="changePassBtn"
+                    class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-xl transition-all duration-200 text-sm shadow-lg shadow-amber-100 flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-lock"></i>
+                    <span>パスワードを設定する</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- =====================================================
          ③ メインコンテンツ
          ===================================================== -->
     <div id="mainContent" class="hidden flex-grow flex flex-col">
@@ -444,6 +481,15 @@
         const morningNotifyText   = document.getElementById('morningNotifyText');
         const loginBtn            = document.getElementById('loginBtn');
         const addUserBtn          = document.getElementById('addUserBtn');
+        // パスワード変更オーバーレイ
+        const changePassOverlay   = document.getElementById('changePassOverlay');
+        const changePassForm      = document.getElementById('changePassForm');
+        const newPassInput        = document.getElementById('newPassInput');
+        const confirmPassInput    = document.getElementById('confirmPassInput');
+        const changePassError     = document.getElementById('changePassError');
+        const changePassBtn       = document.getElementById('changePassBtn');
+        const passStrengthBar     = document.getElementById('passStrengthBar');
+        const passStrengthFill    = document.getElementById('passStrengthFill');
 
         /* -------------------------------------------------------
            アプリ初期化
@@ -781,6 +827,10 @@
 
             // 朝通知トグル
             morningNotifyBtn.addEventListener('click', handleMorningNotifyToggle);
+
+            // パスワード変更フォーム
+            changePassForm.addEventListener('submit', handleChangePass);
+            newPassInput.addEventListener('input', updatePassStrength);
         }
 
         /* -------------------------------------------------------
@@ -844,34 +894,50 @@
             const foundUser = state.users.find(u => u.id === username && u.pass === password);
 
             if (foundUser) {
-                state.currentUser = foundUser;
                 loginErrorMsg.classList.add('hidden');
-                loginOverlay.classList.add('hidden');
-                mainContent.classList.remove('hidden');
 
-                currentUserNameEl.textContent = foundUser.name;
-                adminConsoleBtn.classList.toggle('hidden', !foundUser.isAdmin);
-
-                // ── セッション保存（7日間有効）──
-                localStorage.setItem('task_share_session', JSON.stringify({
-                    userId: foundUser.id,
-                    loginAt: Date.now(),
-                }));
-
-                showToast(`${foundUser.name}さん、ログインしました！`);
-
-                // 通知が有効なら朝7時スケジューラーを起動
-                if (state.isMorningNotifyEnabled && Notification.permission === 'granted') {
-                    scheduleMorningNotification();
+                // ── 初回ログイン：パスワード変更が必要 ──
+                if (foundUser.mustChangePass === true || foundUser.mustChangePass === "true" || foundUser.mustChangePass === "TRUE") {
+                    state.currentUser = foundUser; // 一時保持
+                    loginOverlay.classList.add('hidden');
+                    changePassOverlay.classList.remove('hidden');
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<span>サインイン</span>';
+                    return;
                 }
 
-                await loadAndSyncData();
+                // 通常ログイン完了
+                await completeLogin(foundUser);
             } else {
                 loginErrorMsg.classList.remove('hidden');
             }
 
             loginBtn.disabled = false;
             loginBtn.innerHTML = '<span>サインイン</span>';
+        }
+
+        /** ログイン完了処理（初回パスワード変更後にも呼ばれる） */
+        async function completeLogin(user) {
+            state.currentUser = user;
+            loginOverlay.classList.add('hidden');
+            changePassOverlay.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+
+            currentUserNameEl.textContent = user.name;
+            adminConsoleBtn.classList.toggle('hidden', !user.isAdmin);
+
+            localStorage.setItem('task_share_session', JSON.stringify({
+                userId: user.id,
+                loginAt: Date.now(),
+            }));
+
+            showToast(`${user.name}さん、ログインしました！`);
+
+            if (state.isMorningNotifyEnabled && Notification.permission === 'granted') {
+                scheduleMorningNotification();
+            }
+
+            await loadAndSyncData();
         }
 
         function handleLogoutAction() {
@@ -883,6 +949,77 @@
             mainContent.classList.add('hidden');
             showLoginOverlay();
             showToast("ログアウトしました");
+        }
+
+        /* -------------------------------------------------------
+           パスワード強度インジケーター
+        ------------------------------------------------------- */
+        function updatePassStrength() {
+            const val = newPassInput.value;
+            passStrengthBar.classList.toggle('hidden', val.length === 0);
+            let score = 0;
+            if (val.length >= 6)  score++;
+            if (val.length >= 10) score++;
+            if (/[A-Z]/.test(val)) score++;
+            if (/[0-9]/.test(val)) score++;
+            if (/[^A-Za-z0-9]/.test(val)) score++;
+            const pct   = (score / 5) * 100;
+            const color = score <= 1 ? '#f87171' : score <= 3 ? '#fb923c' : '#34d399';
+            passStrengthFill.style.width  = pct + '%';
+            passStrengthFill.style.backgroundColor = color;
+        }
+
+        /* -------------------------------------------------------
+           初回パスワード変更処理
+        ------------------------------------------------------- */
+        async function handleChangePass(e) {
+            e.preventDefault();
+            const newPass     = newPassInput.value.trim();
+            const confirmPass = confirmPassInput.value.trim();
+
+            changePassError.classList.add('hidden');
+
+            if (newPass.length < 6) {
+                changePassError.textContent = "パスワードは6文字以上で入力してください";
+                changePassError.classList.remove('hidden');
+                return;
+            }
+            if (newPass !== confirmPass) {
+                changePassError.textContent = "パスワードが一致しません";
+                changePassError.classList.remove('hidden');
+                return;
+            }
+
+            changePassBtn.disabled = true;
+            changePassBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>保存中...</span>';
+
+            // GASに新パスワードを保存（mustChangePass を削除）
+            if (state.gasUrl) {
+                try {
+                    await gasPost(state.gasUrl, {
+                        action: "updateUserPassword",
+                        id: state.currentUser.id,
+                        newPass,
+                    });
+                } catch (err) {
+                    console.warn("パスワード同期失敗（ローカルのみ更新）:", err.message);
+                }
+            }
+
+            // ローカルのユーザー情報も更新
+            const userInState = state.users.find(u => u.id === state.currentUser.id);
+            if (userInState) {
+                userInState.pass = newPass;
+                delete userInState.mustChangePass;
+                state.currentUser = { ...userInState };
+                localStorage.setItem('task_share_local_users', JSON.stringify(state.users));
+            }
+
+            changePassBtn.disabled = false;
+            changePassBtn.innerHTML = '<i class="fa-solid fa-lock"></i><span>パスワードを設定する</span>';
+
+            showToast("パスワードを設定しました！");
+            await completeLogin(state.currentUser);
         }
 
         /* -------------------------------------------------------
